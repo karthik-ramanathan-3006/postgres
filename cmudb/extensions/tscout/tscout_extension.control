@@ -1,0 +1,4 @@
+# TScout extension
+comment = 'TODO: (Karthik) Enter description here'
+default_version = '0.0.1'
+relocatable = true
