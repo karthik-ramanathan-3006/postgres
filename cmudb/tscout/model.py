@@ -625,3 +625,13 @@ class Model:
 
         self.operating_units = operating_units
         self.metrics = OU_METRICS
+        self._enums = nodes.enum_map
+
+    def get_enum_value_map(self, enum_name):
+        if enum_name not in self._enums.keys():
+            logger.error('Requested enum \"%s\" not in Postgres code basse' % enum_name)
+            return {}
+
+        return {
+            entry[0]: entry[1] for entry in self._enums.get(enum_name, [])
+        }
