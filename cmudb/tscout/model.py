@@ -20,6 +20,7 @@ logger = logging.getLogger('tscout')
 
 FLOAT_DOUBLE_NDIGITS = 3
 
+
 @unique
 class BPFType(str, Enum):
     """BPF only has signed and unsigned integers."""
@@ -130,7 +131,9 @@ class Feature:
     bpf_tuple: Tuple[BPFVariable] = None
 
 
-QUERY_ID = Feature("QueryId", readarg_p=False, bpf_tuple=(BPFVariable("query_id", clang.cindex.TypeKind.ULONG),))
+# Internally, Postgres stores query_id as uint64. However, EXPLAIN VERBOSE and pg_stat_statements both represent
+# query_id as BIGINT so TScout stores it as int64 to match this representation.
+QUERY_ID = Feature("QueryId", readarg_p=False, bpf_tuple=(BPFVariable("query_id", clang.cindex.TypeKind.LONG),))
 LEFT_CHILD_NODE_ID = Feature("left_child_plan_node_id", readarg_p=False,
                              bpf_tuple=(BPFVariable("left_child_plan_node_id", clang.cindex.TypeKind.INT),))
 RIGHT_CHILD_NODE_ID = Feature("right_child_plan_node_id", readarg_p=False,
@@ -162,6 +165,38 @@ OU_DEFS = [
      [
          QUERY_ID,
          Feature("Append"),
+         LEFT_CHILD_NODE_ID,
+         RIGHT_CHILD_NODE_ID,
+         STATEMENT_TIMESTAMP
+     ]),
+    ("ExecBitmapAnd",
+     [
+         QUERY_ID,
+         Feature("BitmapAnd"),
+         LEFT_CHILD_NODE_ID,
+         RIGHT_CHILD_NODE_ID,
+         STATEMENT_TIMESTAMP
+     ]),
+    ("ExecBitmapHeapScan",
+     [
+         QUERY_ID,
+         Feature("BitmapHeapScan"),
+         LEFT_CHILD_NODE_ID,
+         RIGHT_CHILD_NODE_ID,
+         STATEMENT_TIMESTAMP
+     ]),
+    ("ExecBitmapIndexScan",
+     [
+         QUERY_ID,
+         Feature("BitmapIndexScan"),
+         LEFT_CHILD_NODE_ID,
+         RIGHT_CHILD_NODE_ID,
+         STATEMENT_TIMESTAMP
+     ]),
+    ("ExecBitmapOr",
+     [
+         QUERY_ID,
+         Feature("BitmapOr"),
          LEFT_CHILD_NODE_ID,
          RIGHT_CHILD_NODE_ID,
          STATEMENT_TIMESTAMP
@@ -222,6 +257,14 @@ OU_DEFS = [
          RIGHT_CHILD_NODE_ID,
          STATEMENT_TIMESTAMP
      ]),
+    ("ExecHash",
+     [
+         QUERY_ID,
+         Feature("Hash"),
+         LEFT_CHILD_NODE_ID,
+         RIGHT_CHILD_NODE_ID,
+         STATEMENT_TIMESTAMP
+     ]),
     ("ExecHashJoinImpl",
      [
          QUERY_ID,
@@ -274,6 +317,14 @@ OU_DEFS = [
      [
          QUERY_ID,
          Feature("Material"),
+         LEFT_CHILD_NODE_ID,
+         RIGHT_CHILD_NODE_ID,
+         STATEMENT_TIMESTAMP
+     ]),
+    ("ExecMemoize",
+     [
+         QUERY_ID,
+         Feature("Memoize"),
          LEFT_CHILD_NODE_ID,
          RIGHT_CHILD_NODE_ID,
          STATEMENT_TIMESTAMP
@@ -440,7 +491,8 @@ OU_DEFS = [
      ]),
 ]
 
-# The metrics to be defined for every OU.
+# The metrics to be defined for every OU. If you add anything to these metrics, consider if it should be accumulated
+# across invocations and adjust code related to SUBST_ACCUMULATE as needed.
 OU_METRICS = (
     BPFVariable(name="start_time",
                 c_type=clang.cindex.TypeKind.ULONG,
