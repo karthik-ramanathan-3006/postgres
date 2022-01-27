@@ -19,6 +19,7 @@ static void ExplainOneQueryWrapper(Query* query, int cursorOptions, IntoClause* 
                                    ParamListInfo params, QueryEnvironment *queryEnv);
 static void WalkPlan(Plan *plan, ExplainState *es);
 static void explainXs(Plan *node, ExplainState *es);
+static size_t get_field_size(c_type type);
 
 static ExplainOneQuery_hook_type chain_ExplainOneQuery = NULL;
 
@@ -67,10 +68,19 @@ static void ExplainOneQueryWrapper(Query* query, int cursorOptions, IntoClause* 
     
     if (es->format == EXPLAIN_FORMAT_TSCOUT) {
 
-        queryDesc = CreateQueryDesc(plan, queryString, InvalidSnapshot, InvalidSnapshot, None_Receiver, params, queryEnv, 0);
+        queryDesc = CreateQueryDesc(
+            plan,
+            queryString,
+            InvalidSnapshot,
+            InvalidSnapshot,
+            None_Receiver,
+            params,
+            queryEnv,
+            0
+        );
 
         if (es->analyze)
-            eflags = 0;				/* default run-to-completion flags */
+            eflags = 0;
         else
             eflags = EXEC_FLAG_EXPLAIN_ONLY;
         if (into)
@@ -96,6 +106,38 @@ static void ExplainOneQueryWrapper(Query* query, int cursorOptions, IntoClause* 
 }
 
 /**
+ * @brief Fetches the size of the field
+ * 
+ * @param type (c_type) - The C field type
+ * @return size_t - Size of the field on the machine
+ */
+size_t get_field_size(c_type type) {
+    switch (type)
+    {
+    case T_BOOL:
+        return sizeof(bool);
+    case T_ENUM:
+        // For now, let's assume that all enumerations are the size of ints.
+        // We're only interested in the NodeTag enum which is an int.
+        // TODO (Karthik): Revisit this.
+    case T_INT:
+        return sizeof(int);
+    case T_SHORT:
+        return sizeof(short);
+    case T_LONG:
+        return sizeof(long);
+    case T_DOUBLE:
+        return sizeof(double);
+    case T_PTR:
+        return sizeof(void *);
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+/**
  * @brief - Explains the features of the given node. 
  * 
  * @param node (Plan *) - Plan node to be explained.
@@ -103,17 +145,64 @@ static void ExplainOneQueryWrapper(Query* query, int cursorOptions, IntoClause* 
  */
 static void explainXs(Plan *node, ExplainState *es) {
     char *nodeTagExplainer = NULL, nodeName[17];
+    
+    int i, start_index = 0, field_size, next_field_size, padding, num_fields;
+    field *fields;
 
     // NOTE: It is assumed that ou_list contains definitions for all the node tags.
     nodeTagExplainer = ou_list[nodeTag(node)].name;
+    num_fields = ou_list[nodeTag(node)].num_xs;
+    fields = ou_list[nodeTag(node)].fields;
     
     sprintf(nodeName, "node-%d", node->plan_node_id);
     ExplainPropertyText("node", nodeName, es);
     ExplainPropertyText("tag", nodeTagExplainer, es);
-    ExplainPropertyFloat("startup_cost", "units", (node->startup_cost), 6, es);
-    ExplainPropertyFloat("total_cost", "units", (node->total_cost), 6, es);
-    ExplainPropertyInteger("plan_width", "units", node->plan_width, es);
-    ExplainPropertyText("X's", ou_list[nodeTag(node)].features[0], es);
+
+    for( i=0; i < num_fields; i++) {
+        field_size = get_field_size( fields[i].type);
+        next_field_size = i < num_fields - 1 ? get_field_size(fields[i+1].type) : 8;
+
+        switch (fields[i].type)
+        {
+        case T_BOOL:
+            elog(DEBUG1, "%s: %x", fields[i].name, *(bool *)((char *)(node) + start_index));
+            ExplainPropertyBool(fields[i].name, *(bool *)((char *)(node) + start_index), es);
+            break;
+        
+        case T_INT:
+        case T_ENUM:
+            elog(DEBUG1, "%s: %d", fields[i].name, *(int *)((char *)(node) + start_index));
+            ExplainPropertyInteger(fields[i].name, "units", *(int *)((char *)(node) + start_index), es);
+            break;
+        
+        case T_SHORT:
+            elog(DEBUG1, "%s: %ld", fields[i].name, (int64)*(short *)((char *)(node) + start_index));
+            ExplainPropertyInteger(fields[i].name, "units", (int64)*(short *)((char *)(node) + start_index), es);
+            break;
+        
+        case T_LONG:
+            elog(DEBUG1, "%s: %ld", fields[i].name, (int64)*(long *)((char *)(node) + start_index));
+            ExplainPropertyInteger(fields[i].name, "units", (int64)*(long *)((char *)(node) + start_index), es);
+            break;
+        
+        case T_DOUBLE:
+            elog(DEBUG1, "%s: %lf", fields[i].name, *(double *)((char *)(node) + start_index));
+            ExplainPropertyFloat(fields[i].name, "units", *(double *)((char *)(node) + start_index), 6, es);
+            break;
+        
+        case T_PTR:
+            elog(DEBUG1, "%s: %s", fields[i].name, "<skipped>");
+            ExplainPropertyText(fields[i].name, "<skipped>", es);
+            break;
+
+        default:
+            break;
+        }
+
+        padding = (next_field_size - ((start_index + field_size) % next_field_size)) % next_field_size;
+        start_index += field_size + padding;
+        elog(DEBUG1, "Padding: %d, start index: %d", padding, start_index);
+    }
 }
 
 /**
@@ -142,4 +231,6 @@ static void WalkPlan(Plan *plan, ExplainState *es) {
         WalkPlan(innerPlan(plan), es);
         ExplainCloseGroup("right-child", "right-child", true, es);
     }
+
+    // TODO (Karthik): Handle sub-plans.
 }
