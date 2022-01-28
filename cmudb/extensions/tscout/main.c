@@ -1,13 +1,17 @@
 #include <time.h>
 
+// clang-format off
+// Extension magic.
+#include "postgres.h"
+#include "fmgr.h"
+// clang-format on
+
 #include "../../../src/include/tscout/marker.h"
 #include "commands/createas.h"
 #include "commands/explain.h"
-#include "fmgr.h"
 #include "operating_unit_features.h"
 #include "optimizer/planner.h"
 #include "parser/parsetree.h"
-#include "postgres.h"
 #include "utils/builtins.h"
 
 PG_MODULE_MAGIC;
