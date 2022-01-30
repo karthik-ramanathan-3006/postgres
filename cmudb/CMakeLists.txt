@@ -7,7 +7,8 @@ else ()
     # The files to be formatted.
     # Note that you can't use regex, only basic (not extended!) globbing.
     file(GLOB_RECURSE FORMAT_FILES
-            "${CMAKE_CURRENT_SOURCE_DIR}/tscout/*.[ch]"
+            "${CMAKE_SOURCE_DIR}/cmudb/extensions/tscout/*.[ch]"
+            "${CMAKE_SOURCE_DIR}/cmudb/tscout/*.[ch]"
             "${CMAKE_SOURCE_DIR}/src/include/tscout/*.[ch]"
             )
 
