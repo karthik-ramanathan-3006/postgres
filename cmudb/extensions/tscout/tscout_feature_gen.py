@@ -1,9 +1,9 @@
 import re
 import sys
+from pathlib import Path
 from typing import List, Tuple
 
 from clang.cindex import TypeKind
-from pathlib import Path
 
 # We're assuming that this script is housed in postgres/cmudb/extensions/tscout
 # We calculate the path of TScout relative to this extension and add it to the PythonPath temporarily.
