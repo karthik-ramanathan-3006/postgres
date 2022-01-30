@@ -28,9 +28,20 @@ OU_EXCLUDED_FEATURES = [
     "statement_timestamp"
 ]
 
-def aggregate_features(ou: model.OperatingUnit):
+
+def aggregate_features(ou):
     """
-    For the given OU
+    Extract the name and type of every feature for the given OU.
+
+    Parameters
+    ----------
+    ou : model.OperatingUnit
+        The OU to extract features from.
+
+    Returns
+    -------
+    features_list : List[Tuple[str, clang.cindex.TypeKind]]
+        The [(name, type)] of all features for the given OU.
     """
     features_list = []
     for feature in ou.features_list:
@@ -41,10 +52,25 @@ def aggregate_features(ou: model.OperatingUnit):
 
     return features_list
 
-def add_features(features_string: str, feat_index: int, ou_xs: List[Tuple]):
+
+def add_features(features_string, feat_index, ou_xs):
     """
-    For the given OU, this function extracts the features, appends to the
-    given string and returns it.
+    Build up the features string for the given OU.
+
+    Parameters
+    ----------
+    features_string : str
+        The string containing all the features.
+        Initialize with the empty string.
+    feat_index : int
+        The index of the feature to extract.
+    ou_xs : List[Tuple[str, clang.cindex.TypeKind]]
+        The (names, types) of all the features for the given OU.
+
+    Returns
+    -------
+    new_features_string : str
+        The new features string for the given OU.
     """
     features_string += "\n"
     features_struct_list = []
@@ -74,16 +100,38 @@ def add_features(features_string: str, feat_index: int, ou_xs: List[Tuple]):
 
     return features_string
 
-def fill_in_template(ou_string: str, ou_index: int, node_type: int, ou_xs: List[Tuple]):
-    """
-    For the given OU, this function fills in the autogeneration template.
-    """
-    ou_string = ou_string.replace("OU_INDEX", "%d" % (ou_index))        # Replace the index
-    ou_string = ou_string.replace("OU_NAME", '\"%s\"' % (node_type))    # Replace the name of the OU
-    ou_string = ou_string.replace("NUM_Xs", "%d" % (len(ou_xs)))        # Comput and replace number of Xs
 
+def fill_in_template(ou_string, ou_index, node_type, ou_xs):
+    """
+    Fill in the codegen template for the given OU.
+
+    Parameters
+    ----------
+    ou_string : str
+        The current ou_string.
+    ou_index : int
+        The index of the OU.
+    node_type : str
+        The name of the OU.
+    ou_xs : List[Tuple[str, clang.cindex.TypeKind]]
+        The (name, type) of all features for the OU.
+
+    Returns
+    -------
+    new_ou_string : str
+        The codegen template with the given OU's details substituted.
+    """
+    # Replace the index of the OU.
+    ou_string = ou_string.replace("OU_INDEX", "%d" % (ou_index))
+    # Replace the name of the OU.
+    ou_string = ou_string.replace("OU_NAME", '\"%s\"' % (node_type))
+    # Compute and replace the number of features.
+    ou_string = ou_string.replace("NUM_Xs", "%d" % (len(ou_xs)))
+
+    # If there are features, add the list of features.
+    # Otherwise, replace with a dummy string.
     if ou_xs:
-        ou_string = ou_string.replace("OU_Xs", "feat_%d" % (ou_index))  # Finally, add the list of Xs
+        ou_string = ou_string.replace("OU_Xs", "feat_%d" % (ou_index))
     else:
         ou_string = ou_string.replace("OU_Xs", "feat_none")
 
@@ -92,7 +140,7 @@ def fill_in_template(ou_string: str, ou_index: int, node_type: int, ou_xs: List[
 
 if __name__ == "__main__":
     """
-    Main function to generate the TScout Xs.
+    Generate the TScout features and fill in the codegen template.
     """
     modeler = model.Model()
 
@@ -100,17 +148,16 @@ if __name__ == "__main__":
     pg_mapping = modeler.get_enum_value_map('NodeTag')
     for i in range(len(pg_mapping)):
         OU_TO_FEATURE_LIST_MAP[i] = {}
-    
-    # Populate the NodeTag details 
+
+    # Populate the NodeTag's details.
     for (index, ou) in enumerate(modeler.operating_units):
         if ou.name().startswith("Exec"):
-            struct_name = ou.name()[len("Exec"): ]
+            struct_name = ou.name()[len("Exec"):]
             pg_struct_name = "T_" + struct_name
             pg_enum_index = None
 
             if pg_struct_name in pg_mapping.keys():
                 pg_enum_index = pg_mapping[pg_struct_name]
-            
             elif ou.name() in OU_EXCEPTIONS:
                 pg_struct_name = OU_EXCEPTIONS[ou.name()]
                 pg_enum_index = pg_mapping[pg_struct_name]
@@ -119,7 +166,7 @@ if __name__ == "__main__":
                 OU_TO_FEATURE_LIST_MAP[pg_enum_index] = {
                     "ou_index": index,
                     "pg_enum_index": pg_mapping[pg_struct_name],
-                    "ou_name":  ou.name(),
+                    "ou_name": ou.name(),
                     "features": aggregate_features(ou)
                 }
 
@@ -127,27 +174,28 @@ if __name__ == "__main__":
     with open(str(CODEGEN_TEMPLATE_PATH), "r") as template:
         text = template.read()
 
-        matches = re.findall(r"\(ou\)\{.*\}\,", text)                      # Find a seq. that matches "(ou){.*},"
-        assert(len(matches) == 1)
+        # Find a sequence that matches "(ou){.*},".
+        matches = re.findall(r"\(ou\){.*},", text)
+        assert (len(matches) == 1)
 
-        feat_matcher = re.findall(r"\/\/ Features go here", text)
-        assert(len(matches) == 1)
+        feat_matcher = re.findall(r"// Features go here.", text)
+        assert (len(matches) == 1)
 
         match = matches[0]
         feat_match = feat_matcher[0]
 
         ou_struct_list = []
         features_list_string = ""
-        # For each OU, generate the features and fill in the autogeneration template.
+        # For each OU, generate the features and fill in the codegen template.
         for (key, value) in OU_TO_FEATURE_LIST_MAP.items():
-            ou_string = match[:] # Copy the matching string by value
+            # Initialize with the matching string.
+            ou_string = match
             if value:
-                ou_xs =  value["features"]
+                ou_xs = value["features"]
                 ou_string = fill_in_template(ou_string, key, value["ou_name"], ou_xs)
                 features_list_string = add_features(features_list_string, key, ou_xs)
-
             else:
-                # Print defaults
+                # Print defaults.
                 ou_string = fill_in_template(ou_string, -1, "", [])
 
             ou_struct_list.append(ou_string)

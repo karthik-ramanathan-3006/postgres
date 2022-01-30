@@ -36,7 +36,7 @@ typedef struct OperatingUnit {
   field *fields;
 } ou;
 
-// Features go here
+// Features go here.
 field feat_none[0];
 
 ou ou_list[] = {
