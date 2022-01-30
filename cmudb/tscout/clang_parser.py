@@ -5,18 +5,19 @@ Parse C code into a map which maps from (struct name) to
 (base-class- and record-type- expanded fields list).
 """
 
+import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Mapping, Tuple
 
 import clang.cindex
-import logging
 
 logger = logging.getLogger('tscout')
 
 # Expected path of this file: "postgres/cmudb/tscout/"
 
 # Path to the Postgres root.
-POSTGRES_PATH = r'../..'
+POSTGRES_PATH = Path(__file__).parent.parent.parent
 # Path to the Postgres files to parse.
 POSTGRES_FILES = (
     f'{POSTGRES_PATH}/src/backend/executor/execMain.c',
