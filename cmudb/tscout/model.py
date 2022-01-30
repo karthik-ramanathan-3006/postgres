@@ -681,7 +681,7 @@ class Model:
 
     def get_enum_value_map(self, enum_name):
         if enum_name not in self._enums.keys():
-            logger.error('Requested enum \"%s\" not in Postgres code basse' % enum_name)
+            logger.error('Requested enum \"%s\" not in Postgres code base.' % enum_name)
             return {}
 
         return {
