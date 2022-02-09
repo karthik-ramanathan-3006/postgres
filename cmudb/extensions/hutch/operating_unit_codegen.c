@@ -17,7 +17,7 @@ typedef enum c_type {
 } c_type;
 
 /**
- * @brief - a feature for the behavior models (also called an X).
+ * @brief - A feature for the behavior models (also called an X).
  * An X contains a name and a C data type.
  *
  */
