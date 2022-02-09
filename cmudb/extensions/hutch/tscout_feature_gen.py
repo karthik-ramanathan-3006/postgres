@@ -31,7 +31,7 @@ class ExtractionOU:
     ou_name: str
         The name of the Operating Unit.
     features: List[Tuple[str, TypeKind]]
-        The list of (feature-name, feature-data-type) pairs which correspond to the features
+        The list of (feature-name, feature-data-type) pairs which correspond to the features.
     """
 
     ou_index: int
