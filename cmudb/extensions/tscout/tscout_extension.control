@@ -1,4 +1,4 @@
-# TScout extension
-comment = 'TODO: (Karthik) Enter description here'
+# TScout extension.
+comment = 'Support for EXPLAIN (FORMAT TSCOUT) to gather query features.'
 default_version = '0.0.1'
 relocatable = true

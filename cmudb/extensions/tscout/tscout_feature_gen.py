@@ -1,11 +1,11 @@
 import re
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, List, Mapping, Tuple
 
 from clang.cindex import TypeKind
 
-# We're assuming that this script is housed in postgres/cmudb/extensions/tscout
+# We're assuming that this script is housed in `postgres/cmudb/extensions/tscout`.
 # We calculate the path of TScout relative to this extension and add it to the PythonPath temporarily.
 TSCOUT_EXTENSION_PATH = Path(__file__).parent
 CODEGEN_TEMPLATE_PATH = Path.joinpath(TSCOUT_EXTENSION_PATH, "operating_unit_codegen.c")
@@ -14,18 +14,22 @@ CODEGEN_FILE_PATH = Path.joinpath(TSCOUT_EXTENSION_PATH, "operating_unit_feature
 TSCOUT_PATH = Path.joinpath(TSCOUT_EXTENSION_PATH, Path("../../tscout/"))
 sys.path.append(TSCOUT_PATH.resolve().__str__())
 
-# And now, we can import TScout
+# And now, we can import TScout.
 from tscout import model
 
-OU_TO_FEATURE_LIST_MAP = {}
-OU_EXCEPTIONS = {
-    "ExecHashJoinImpl": "T_HashJoin"
-}
+OU_TO_FEATURE_LIST_MAP: Mapping[int, Mapping[str, Any]] = {}
+
+# The following OUs do not follow the general naming convention:
+# OU Name: ExecABC
+# Postgres struct name: T_ABC
+# We capture these OUs as exceptions manually.
+# TODO (Karthik): Find out when and why this happens.
+OU_EXCEPTIONS = {"ExecHashJoinImpl": "T_HashJoin"}
 OU_EXCLUDED_FEATURES = [
     "query_id",
     "left_child_plan_node_id",
     "right_child_plan_node_id",
-    "statement_timestamp"
+    "statement_timestamp",
 ]
 
 
@@ -93,7 +97,7 @@ def add_features(features_string, feat_index, ou_xs):
             type_kind = "T_BOOL"
         else:
             type_kind = str(value)
-        features_struct_list.append("{ %s, \"%s\" }" % (type_kind, name))
+        features_struct_list.append('{ %s, "%s" }' % (type_kind, name))
 
     features_struct = str.join(", ", features_struct_list)
     features_string += "field feat_%d[] = { " % (feat_index) + features_struct + " };"
@@ -124,14 +128,14 @@ def fill_in_template(ou_string, ou_index, node_type, ou_xs):
     # Replace the index of the OU.
     ou_string = ou_string.replace("OU_INDEX", "%d" % (ou_index))
     # Replace the name of the OU.
-    ou_string = ou_string.replace("OU_NAME", '\"%s\"' % (node_type))
+    ou_string = ou_string.replace("OU_NAME", '"%s"' % (node_type))
     # Compute and replace the number of features.
     ou_string = ou_string.replace("NUM_Xs", "%d" % (len(ou_xs)))
 
     # If there are features, add the list of features.
     # Otherwise, replace with a dummy string.
     if ou_xs:
-        ou_string = ou_string.replace("OU_Xs", "feat_%d" % (ou_index))
+        ou_string = ou_string.replace("OU_Xs", f"feat_{ou_index}")
     else:
         ou_string = ou_string.replace("OU_Xs", "feat_none")
 
@@ -145,14 +149,14 @@ if __name__ == "__main__":
     modeler = model.Model()
 
     # Fetch the NodeTag enum.
-    pg_mapping = modeler.get_enum_value_map('NodeTag')
+    pg_mapping = modeler.get_enum_value_map("NodeTag")
     for i in range(len(pg_mapping)):
         OU_TO_FEATURE_LIST_MAP[i] = {}
 
     # Populate the NodeTag's details.
     for (index, ou) in enumerate(modeler.operating_units):
         if ou.name().startswith("Exec"):
-            struct_name = ou.name()[len("Exec"):]
+            struct_name = ou.name()[len("Exec") :]
             pg_struct_name = "T_" + struct_name
             pg_enum_index = None
 
@@ -167,7 +171,7 @@ if __name__ == "__main__":
                     "ou_index": index,
                     "pg_enum_index": pg_mapping[pg_struct_name],
                     "ou_name": ou.name(),
-                    "features": aggregate_features(ou)
+                    "features": aggregate_features(ou),
                 }
 
     # Open and analyse the codegen file.
@@ -176,10 +180,10 @@ if __name__ == "__main__":
 
         # Find a sequence that matches "(ou){.*},".
         matches = re.findall(r"\(ou\){.*},", text)
-        assert (len(matches) == 1)
+        assert len(matches) == 1
 
         feat_matcher = re.findall(r"// Features go here.", text)
-        assert (len(matches) == 1)
+        assert len(matches) == 1
 
         match = matches[0]
         feat_match = feat_matcher[0]

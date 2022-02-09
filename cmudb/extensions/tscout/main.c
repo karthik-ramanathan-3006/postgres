@@ -12,7 +12,7 @@
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 
-#include "../../../src/include/tscout/marker.h"
+#include "tscout/marker.h"
 #include "operating_unit_features.h"
 
 PG_MODULE_MAGIC;
@@ -22,25 +22,25 @@ void _PG_fini(void);
 static void ExplainOneQueryWrapper(Query *query, int cursorOptions, IntoClause *into, ExplainState *es,
                                    const char *queryString, ParamListInfo params, QueryEnvironment *queryEnv);
 static void WalkPlan(Plan *plan, ExplainState *es);
-static void explainXs(Plan *node, ExplainState *es);
-static size_t get_field_size(c_type type);
+static void ExplainFeatures(Plan *node, ExplainState *es);
+static size_t GetFieldSize(c_type type);
 
 static ExplainOneQuery_hook_type chain_ExplainOneQuery = NULL;
 
 void _PG_init(void) {
-  elog(LOG, "Initializing extension");
+  elog(LOG, "Initializing extension.");
 
-  // Chain the Extension Explain Query Wrapper to the head of the chain.
+  // Hook the ExplainOneQuery wrapper to the head of the chain.
   chain_ExplainOneQuery = ExplainOneQuery_hook;
   ExplainOneQuery_hook = ExplainOneQueryWrapper;
 
-  // Init logic (like setting flags) go here
+  // Init logic (like setting flags) go here.
 }
 
 void _PG_fini(void) {
-  // Clean up logic goes here
+  // Clean up logic goes here.
   ExplainOneQuery_hook = chain_ExplainOneQuery;
-  elog(DEBUG1, "Finishing extension");
+  elog(DEBUG1, "Finishing extension.");
 }
 
 static void ExplainOneQueryWrapper(Query *query, int cursorOptions, IntoClause *into, ExplainState *es,
@@ -55,7 +55,7 @@ static void ExplainOneQueryWrapper(Query *query, int cursorOptions, IntoClause *
   }
 
   // Postgres does not expose an interface to call into the standard ExplainOneQuery.
-  // Hence, we duplicate the operations performed by the standard ExplainOneQuery ie
+  // Hence, we duplicate the operations performed by the standard ExplainOneQuery i.e.,
   // calling into the standard planner.
   // A non-standard planner can be hooked in, in the the future.
   INSTR_TIME_SET_CURRENT(plan_start);
@@ -77,12 +77,12 @@ static void ExplainOneQueryWrapper(Query *query, int cursorOptions, IntoClause *
       eflags = EXEC_FLAG_EXPLAIN_ONLY;
     if (into) eflags |= GetIntoRelEFlags(into);
 
-    // Run the executor
+    // Run the executor.
     ExecutorStart(queryDesc, eflags);
     // This calls into initPlan() which populates the plan tree.
-    // TODO: Create a hook to executor start.
+    // TODO (Karthik): Create a hook to executor start.
 
-    // Finally, walk through the plan, dumping its out in a separate top-level group.
+    // Finally, walks through the plan, dumping the output of the plan in a separate top-level group.
     ExplainOpenGroup("TscoutProps", NULL, true, es);
     WalkPlan(queryDesc->planstate->plan, es);
     ExplainCloseGroup("TscoutProps", NULL, true, es);
@@ -92,17 +92,17 @@ static void ExplainOneQueryWrapper(Query *query, int cursorOptions, IntoClause *
     FreeQueryDesc(queryDesc);
   }
 
-  // Finally, after performing the extension specific operations, explain the planner.
+  // Finally, after performing the extension specific operations, run the standard explain code path.
   ExplainOnePlan(plan, into, es, queryString, params, queryEnv, &plan_duration, NULL);
 }
 
 /**
- * @brief Fetches the size of the field
+ * @brief Fetch the size of the field.
  *
- * @param type (c_type) - The C field type
- * @return size_t - Size of the field on the machine
+ * @param type (c_type) - The C field type.
+ * @return size_t - Size of the field on the machine.
  */
-size_t get_field_size(c_type type) {
+size_t GetFieldSize(c_type type) {
   switch (type) {
     case T_BOOL:
       return sizeof(bool);
@@ -124,20 +124,23 @@ size_t get_field_size(c_type type) {
       break;
   }
 
-  return 0;
+    // Abort in case of unknown field type.
+  abort();
 }
 
 /**
- * @brief - Explains the features of the given node.
+ * @brief - Explain the features of the given node.
  *
  * @param node (Plan *) - Plan node to be explained.
  * @param es (ExplainState *) - The current EXPLAIN state.
  */
-static void explainXs(Plan *node, ExplainState *es) {
-  char *nodeTagExplainer = NULL, nodeName[17];
-
-  int i, start_index = 0, field_size, next_field_size, padding, num_fields;
+static void ExplainFeatures(Plan *node, ExplainState *es) {
+  char *nodeTagExplainer, nodeName[17];
+  int i, start_index, field_size, next_field_size, padding, num_fields;
   field *fields;
+
+  nodeTagExplainer = NULL;
+  start_index = 0;
 
   // NOTE: It is assumed that ou_list contains definitions for all the node tags.
   nodeTagExplainer = ou_list[nodeTag(node)].name;
@@ -149,8 +152,8 @@ static void explainXs(Plan *node, ExplainState *es) {
   ExplainPropertyText("tag", nodeTagExplainer, es);
 
   for (i = 0; i < num_fields; i++) {
-    field_size = get_field_size(fields[i].type);
-    next_field_size = i < num_fields - 1 ? get_field_size(fields[i + 1].type) : 8;
+    field_size = GetFieldSize(fields[i].type);
+    next_field_size = i < num_fields - 1 ? GetFieldSize(fields[i + 1].type) : 8;
 
     switch (fields[i].type) {
       case T_BOOL:
@@ -195,13 +198,13 @@ static void explainXs(Plan *node, ExplainState *es) {
 }
 
 /**
- * @brief - Walks through the plan tree.
+ * @brief - Walks through the plan tree, dumping features to the current open group.
  *
  * @param plan (Plan *) - Plan node.
  * @param es (ExplainState *) - The current EXPLAIN state.
  */
 static void WalkPlan(Plan *plan, ExplainState *es) {
-  if (plan == NULL) return;
+  Assert(plan != NULL);
 
   // 1. Explain the current node.
   explainXs(plan, es);

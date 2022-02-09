@@ -1,7 +1,8 @@
 /**
  * @brief - An enum that represents all the C data types
  * encountered while scanning the Postgres code-base.
- *
+ * The scan operation is performed by the Clang parser.
+ * 
  */
 typedef enum c_type {
   T_BOOL = 0,
@@ -16,7 +17,7 @@ typedef enum c_type {
 } c_type;
 
 /**
- * @brief - A struct that represents an X or a feature.
+ * @brief - a feature for the behavior models (also called an X).
  * An X contains a name and a C data type.
  *
  */
@@ -26,7 +27,7 @@ typedef struct field {
 } field;
 
 /**
- * @brief - Represents a TScout Operating Unit
+ * @brief - An OperatingUnit as defined by TScout.
  *
  */
 typedef struct OperatingUnit {
