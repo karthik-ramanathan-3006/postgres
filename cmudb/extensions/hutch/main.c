@@ -198,7 +198,7 @@ static void ExplainFeatures(Plan *node, ExplainState *es) {
 }
 
 /**
- * @brief - Walks through the plan tree, dumping features to the current open group.
+ * @brief - Walk through the plan tree, dumping features to the current open group.
  *
  * @param plan (Plan *) - Plan node.
  * @param es (ExplainState *) - The current EXPLAIN state.
