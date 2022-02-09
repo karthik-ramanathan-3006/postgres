@@ -1,5 +1,5 @@
 # Set up the TScout extension.
-add_custom_target(extensions_tscout_install
+add_custom_target(extensions_hutch_install
         # Generate the necessary features.
         COMMAND sudo python3 ${CMAKE_CURRENT_SOURCE_DIR}/tscout_feature_gen.py
         # Install the extension into the default build directory's PostgreSQL.
