@@ -1,5 +1,6 @@
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Mapping, Tuple
 
@@ -17,7 +18,29 @@ sys.path.append(TSCOUT_PATH.resolve().__str__())
 # And now, we can import TScout.
 from tscout import model
 
-OU_TO_FEATURE_LIST_MAP: Mapping[int, Mapping[str, Any]] = {}
+
+@dataclass
+class ExtractionOU:
+    """
+    Represents an Operating Unit whose features are to be extracted from a running instance of PostgreSQL.
+
+    ou_index : int
+        The index of the Operating Unit (OU) in the list of OUs produced by the Model class.
+    pg_enum_index : int
+        The index/value of the corresponding enumeration constant in the PostgreSQL source code.
+    ou_name: str
+        The name of the Operating Unit.
+    features: List[Tuple[str, TypeKind]]
+        The list of (feature-name, feature-data-type) pairs which correspond to the features
+    """
+
+    ou_index: int
+    pg_enum_index: int
+    ou_name: str
+    features: List[Tuple[str, TypeKind]]
+
+
+OU_TO_FEATURE_LIST_MAP: Mapping[int, ExtractionOU] = {}
 
 # The following OUs do not follow the general naming convention:
 # OU Name: ExecABC
@@ -167,12 +190,9 @@ if __name__ == "__main__":
                 pg_enum_index = pg_mapping[pg_struct_name]
 
             if pg_enum_index:
-                OU_TO_FEATURE_LIST_MAP[pg_enum_index] = {
-                    "ou_index": index,
-                    "pg_enum_index": pg_mapping[pg_struct_name],
-                    "ou_name": ou.name(),
-                    "features": aggregate_features(ou),
-                }
+                OU_TO_FEATURE_LIST_MAP[pg_enum_index] = ExtractionOU(
+                    index, pg_mapping[pg_struct_name], ou.name(), aggregate_features(ou)
+                )
 
     # Open and analyse the codegen file.
     with open(str(CODEGEN_TEMPLATE_PATH), "r") as template:
@@ -195,8 +215,8 @@ if __name__ == "__main__":
             # Initialize with the matching string.
             ou_string = match
             if value:
-                ou_xs = value["features"]
-                ou_string = fill_in_template(ou_string, key, value["ou_name"], ou_xs)
+                ou_xs = value.features
+                ou_string = fill_in_template(ou_string, key, value.ou_name, ou_xs)
                 features_list_string = add_features(features_list_string, key, ou_xs)
             else:
                 # Print defaults.
