@@ -207,7 +207,7 @@ static void WalkPlan(Plan *plan, ExplainState *es) {
   Assert(plan != NULL);
 
   // 1. Explain the current node.
-  explainXs(plan, es);
+  ExplainFeatures(plan, es);
 
   // 2. Explain the tree rooted in the outer (left) plan.
   if (plan != NULL && outerPlan(plan) != NULL) {
