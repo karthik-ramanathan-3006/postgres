@@ -84,7 +84,9 @@ static void ExplainOneQueryWrapper(Query *query, int cursorOptions, IntoClause *
 
     // Finally, walks through the plan, dumping the output of the plan in a separate top-level group.
     ExplainOpenGroup("TscoutProps", NULL, true, es);
+    ExplainOpenGroup("Tscout", "Tscout", true, es);
     WalkPlan(queryDesc->planstate->plan, es);
+    ExplainCloseGroup("Tscout", "Tscout", true, es);
     ExplainCloseGroup("TscoutProps", NULL, true, es);
 
     // Free the created query description resources.
@@ -124,7 +126,7 @@ size_t GetFieldSize(c_type type) {
       break;
   }
 
-    // Abort in case of unknown field type.
+  // Abort in case of unknown field type.
   abort();
 }
 
@@ -209,18 +211,26 @@ static void WalkPlan(Plan *plan, ExplainState *es) {
   // 1. Explain the current node.
   ExplainFeatures(plan, es);
 
+  if (outerPlan(plan) != NULL || innerPlan(plan) != NULL) {
+    ExplainOpenGroup("Plans", "Plans", false, es);
+  }
+
   // 2. Explain the tree rooted in the outer (left) plan.
-  if (plan != NULL && outerPlan(plan) != NULL) {
-    ExplainOpenGroup("left-child", "left-child", true, es);
+  if (outerPlan(plan) != NULL) {
+    ExplainOpenGroup("left-child", NULL, true, es);
     WalkPlan(outerPlan(plan), es);
-    ExplainCloseGroup("left-child", "left-child", true, es);
+    ExplainCloseGroup("left-child", NULL, true, es);
   }
 
   // 3. Explain the tree rooted in the inner (right) plan.
-  if (plan != NULL && innerPlan(plan) != NULL) {
-    ExplainOpenGroup("right-child", "right-child", true, es);
+  if (innerPlan(plan) != NULL) {
+    ExplainOpenGroup("right-child", NULL, true, es);
     WalkPlan(innerPlan(plan), es);
-    ExplainCloseGroup("right-child", "right-child", true, es);
+    ExplainCloseGroup("right-child", NULL, true, es);
+  }
+
+  if (outerPlan(plan) != NULL || innerPlan(plan) != NULL) {
+    ExplainCloseGroup("Plans", "Plans", false, es);
   }
 
   // TODO (Karthik): Handle sub-plans.
