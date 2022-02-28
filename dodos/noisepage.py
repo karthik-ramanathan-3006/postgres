@@ -62,11 +62,7 @@ def task_np_build():
     """
     return {
         "actions": [
-<<<<<<< HEAD
             "make -j -s install-world-bin",
-=======
-            "make -j install-world-bin",
->>>>>>> a27e7e202f... Replace CMake with dodo. (#50)
         ],
         "file_dep": [ARTIFACT_config_log],
         "targets": [ARTIFACT_postgres],
