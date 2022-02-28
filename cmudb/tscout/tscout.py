@@ -2,6 +2,7 @@
 import argparse
 import logging
 import multiprocessing as mp
+import os
 import sys
 from dataclasses import dataclass
 
@@ -124,7 +125,17 @@ def generate_readargs(feature_list):
     return "".join(code)
 
 
-def generate_markers(operation, ou_index):
+def generate_reagents(feature_list, reagents_used):
+    code = []
+    for feature in feature_list:
+        for field in feature.bpf_tuple:
+            if field.pg_type in model.REAGENTS:
+                reagents_used.add(field.pg_type)
+                code.append(model.REAGENTS[field.pg_type].produce_one_field(field.name))
+    return "".join(code)
+
+
+def generate_markers(operation, ou_index, reagents_used):
     # pylint: disable=global-statement
     global HELPER_STRUCT_DEFS
     # Load the C code for the Markers.
@@ -134,6 +145,9 @@ def generate_markers(operation, ou_index):
     # Replace OU-specific placeholders in C code.
     markers_c = markers_c.replace("SUBST_OU", f"{operation.function}")
     markers_c = markers_c.replace("SUBST_READARGS", generate_readargs(operation.features_list))
+    # TODO(Matt): We're making multiple passes through the features_list. Maybe collapse generate_reagents and
+    #  generate_readargs into one function.
+    markers_c = markers_c.replace("SUBST_REAGENTS", generate_reagents(operation.features_list, reagents_used))
     markers_c = markers_c.replace("SUBST_FEATURES", operation.features_struct())
     markers_c = markers_c.replace("SUBST_INDEX", str(ou_index))
     markers_c = markers_c.replace("SUBST_FIRST_FEATURE", operation.features_list[0].bpf_tuple[0].name)
@@ -150,16 +164,29 @@ def collector(collector_flags, ou_processor_queues, pid, socket_fd):
     # Read the C code for the Collector.
     with open("collector.c", "r", encoding="utf-8") as collector_file:
         collector_c = collector_file.read()
+
     # Append the C code for the Probes.
     with open("probes.c", "r", encoding="utf-8") as probes_file:
         collector_c += probes_file.read()
-    # Append the C code for the Markers.
+    # Append the C code for the Markers. Accumulate the Reagents that we need into a set to use later to add the
+    # definitions that we need.
+    reagents_used = set()
     for ou_index, ou in enumerate(operating_units):
-        collector_c += generate_markers(ou, ou_index)
+        collector_c += generate_markers(ou, ou_index, reagents_used)
+
+    # Process the list of Reagents that we need. Prepend the C code for the Reagent functions, add struct declaration to
+    # HELPER_STRUCT_DEFS to be prepended later.
+    for reagent_used in reagents_used:
+        reagent = model.REAGENTS[reagent_used]
+        collector_c = reagent.reagent_fn() + "\n" + collector_c
+        if reagent.type_name not in HELPER_STRUCT_DEFS:
+            # We may already have a struct definition for this type if it was unrolled in a struct somewhere already.
+            HELPER_STRUCT_DEFS[reagent.type_name] = model.struct_decl_for_fields(reagent.type_name, reagent.bpf_tuple)
+
     # Prepend the helper struct defs.
     collector_c = "\n".join(HELPER_STRUCT_DEFS.values()) + "\n" + collector_c
 
-    # Replace remaining placeholders in C code.
+    # Replace placeholders related to metrics.
     defs = [f"{model.CLANG_TO_BPF[metric.c_type]} {metric.name}{metric.alignment_string()}" for metric in metrics]
     metrics_struct = ";\n".join(defs) + ";"
     collector_c = collector_c.replace("SUBST_METRICS", metrics_struct)
@@ -265,53 +292,68 @@ def lost_something(num_lost):
     pass
 
 
-def processor(ou, buffered_strings, outdir):
+def processor(ou, buffered_strings, outdir, append):
     setproctitle.setproctitle(f"TScout Processor {ou.name()}")
 
+    file_path = f"{outdir}/{ou.name()}.csv"
+
+    file_mode = "w"
+    if append and os.path.exists(file_path):
+        file_mode = "a"
+    elif append:
+        logger.warning("--append specified but %s does not exist. Creating this file instead.", file_path)
+
     # Open output file, with the name based on the OU.
-    file = open(f"{outdir}/{ou.name()}.csv", "w", encoding="utf-8")  # pylint: disable=consider-using-with
+    with open(file_path, mode=file_mode, encoding="utf-8") as file:
+        if file_mode == "w":
+            # Write the OU's feature columns for CSV header,
+            # with an additional separator before resource metrics columns.
+            file.write(ou.features_columns() + ",")
 
-    # Write the OU's feature columns for CSV header,
-    # with an additional separator before resource metrics columns.
-    file.write(ou.features_columns() + ",")
+            # Write the resource metrics columns for the CSV header.
+            file.write(",".join(metric.name for metric in metrics) + "\n")
 
-    # Write the resource metrics columns for the CSV header.
-    file.write(",".join(metric.name for metric in metrics) + "\n")
+        logger.info("Processor started for %s.", ou.name())
 
-    logger.info("Processor started for %s.", ou.name())
+        try:
+            # Write serialized training data points from shared queue to file.
+            while True:
+                string = buffered_strings.get()
+                file.write(string)
 
-    try:
-        # Write serialized training data points from shared queue to file.
-        while True:
-            string = buffered_strings.get()
-            file.write(string)
-
-    except KeyboardInterrupt:
-        logger.info("Processor for %s caught KeyboardInterrupt.", ou.name())
-        while True:
-            # TScout is shutting down.
-            # Write any remaining training data points.
-            string = buffered_strings.get()
-            if string is None:
-                # Collectors have all shut down, and poison pill
-                # indicates there are no more training data points.
-                logger.info("Processor for %s received poison pill.", ou.name())
-                break
-            file.write(string)
-    except Exception as e:  # pylint: disable=broad-except
-        logger.warning("Processor for %s caught %s", ou.name(), e)
-    finally:
-        file.close()
-        logger.info("Processor for %s shut down.", ou.name())
+        except KeyboardInterrupt:
+            logger.info("Processor for %s caught KeyboardInterrupt.", ou.name())
+            while True:
+                # TScout is shutting down.
+                # Write any remaining training data points.
+                string = buffered_strings.get()
+                if string is None:
+                    # Collectors have all shut down, and poison pill
+                    # indicates there are no more training data points.
+                    logger.info("Processor for %s received poison pill.", ou.name())
+                    break
+                file.write(string)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.warning("Processor for %s caught %s", ou.name(), e)
+        finally:
+            logger.info("Processor for %s shut down.", ou.name())
 
 
 def main():
     parser = argparse.ArgumentParser(description="TScout")
     parser.add_argument("pid", type=int, help="Postmaster PID that we're attaching to")
     parser.add_argument("--outdir", required=False, default=".", help="Training data output directory")
+    parser.add_argument(
+        "--append",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Append to training data in output directory",
+    )
     args = parser.parse_args()
     pid = args.pid
     outdir = args.outdir
+    append = args.append
 
     postgres = PostgresInstance(pid)
 
@@ -347,7 +389,7 @@ def main():
             ou_processor_queues.append(ou_processor_queue)
             ou_processor = mp.Process(
                 target=processor,
-                args=(ou, ou_processor_queue, outdir),
+                args=(ou, ou_processor_queue, outdir, append),
             )
             ou_processor.start()
             ou_processors.append(ou_processor)
