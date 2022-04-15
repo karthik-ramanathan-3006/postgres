@@ -1,0 +1,4 @@
+# Knobber extension.
+comment = '<Add description here>.'
+default_version = '0.0.1'
+relocatable = true
