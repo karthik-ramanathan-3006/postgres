@@ -921,6 +921,14 @@ static const unit_conversion time_unit_conversion_table[] =
 	{""}						/* end of table marker */
 };
 
+GucBoolAssignHook guc_bool_hook = NULL;
+
+void guc_bool_hook_wrapper (bool newval, void *extra) {
+	if (guc_bool_hook != NULL) {
+		guc_bool_hook(newval, extra);
+	}
+}
+
 /*
  * Contents of GUC tables
  *
@@ -1011,7 +1019,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&enable_sort,
 		true,
-		NULL, NULL, NULL
+		NULL, guc_bool_hook_wrapper, NULL
 	},
 	{
 		{"enable_incremental_sort", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -1351,7 +1359,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&Log_connections,
 		false,
-		NULL, NULL, NULL
+		NULL, guc_bool_hook_wrapper, NULL
 	},
 	{
 		{"log_disconnections", PGC_SU_BACKEND, LOGGING_WHAT,

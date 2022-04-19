@@ -282,6 +282,8 @@ extern int	tcp_user_timeout;
 extern bool trace_sort;
 #endif
 
+extern PGDLLIMPORT GucBoolAssignHook guc_bool_hook;
+
 /*
  * Functions exported by guc.c
  */
